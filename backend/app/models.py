@@ -4,7 +4,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from datetime import datetime, date
 import uuid
-
+from sqlalchemy.ext.hybrid import hybrid_property
 from app.database import Base
 
 class Goal(Base):
@@ -25,6 +25,15 @@ class Goal(Base):
 
     # Relationships
     milestones = relationship("Milestone", back_populates="goal", cascade="all, delete-orphan")
+
+    @hybrid_property
+    def progress_percentage(self) -> float:
+        """Calculate completion percentage based on milestones"""
+        if not self.milestones or len(self.milestones) == 0:
+            return 0.0
+        
+        completed = sum(1 for m in self.milestones if m.is_completed)
+        return round((completed / len(self.milestones)) * 100, 2)
 
 class Milestone(Base):
     """Short-term checkpoints within a Goal"""
@@ -52,12 +61,88 @@ class User(Base):
     goal_categories = Column(JSON, default=list, nullable=False)  # ['ML', 'CP', ...]
     has_completed_onboarding = Column(Boolean, default=False, nullable=False)
     
+    # XP Decay tracking
+    last_activity_date = Column(Date, server_default=func.current_date(), nullable=False)
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     
     # Relationships
     daily_runs = relationship("DailyRun", back_populates="user", cascade="all, delete-orphan")
     streaks = relationship("Streak", back_populates="user", cascade="all, delete-orphan")
+    decay_history = relationship("XPDecayHistory", back_populates="user", cascade="all, delete-orphan")
+    weekly_challenges = relationship("WeeklyChallengeCompletion", back_populates="user", cascade="all, delete-orphan")
+
+
+class XPDecayHistory(Base):
+    """Track XP decay events for transparency and analytics"""
+    __tablename__ = "xp_decay_history"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    decay_date = Column(Date, nullable=False)
+    days_inactive = Column(Integer, nullable=False)
+    xp_before = Column(Integer, nullable=False)
+    xp_lost = Column(Integer, nullable=False)
+    xp_after = Column(Integer, nullable=False)
+    level_before = Column(Integer, nullable=False)
+    level_after = Column(Integer, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    
+    # Relationships
+    user = relationship("User", back_populates="decay_history")
+    
+    __table_args__ = (
+        Index('idx_decay_history_user_date', 'user_id', 'decay_date'),
+    )
+
+
+class WeeklyChallenge(Base):
+    """Weekly Boss Battle - unlocked by completing all core quests M-F"""
+    __tablename__ = "weekly_challenges"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    week_start_date = Column(Date, nullable=False, unique=True)  # Monday of the week
+    week_end_date = Column(Date, nullable=False)  # Sunday of the week
+    
+    title = Column(String(200), nullable=False)
+    description = Column(Text, nullable=False)
+    xp_reward = Column(Integer, default=1000, nullable=False)
+    
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    
+    # Relationships
+    completions = relationship("WeeklyChallengeCompletion", back_populates="challenge", cascade="all, delete-orphan")
+    
+    __table_args__ = (
+        Index('idx_weekly_challenge_dates', 'week_start_date', 'week_end_date'),
+    )
+
+
+class WeeklyChallengeCompletion(Base):
+    """Track user's weekly challenge completions"""
+    __tablename__ = "weekly_challenge_completions"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    challenge_id = Column(UUID(as_uuid=True), ForeignKey("weekly_challenges.id", ondelete="CASCADE"), nullable=False)
+    
+    is_unlocked = Column(Boolean, default=False, nullable=False)  # Unlocked by completing M-F core quests
+    is_completed = Column(Boolean, default=False, nullable=False)
+    xp_earned = Column(Integer, default=0, nullable=False)
+    
+    unlocked_at = Column(DateTime(timezone=True))
+    completed_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    
+    # Relationships
+    user = relationship("User", back_populates="weekly_challenges")
+    challenge = relationship("WeeklyChallenge", back_populates="completions")
+    
+    __table_args__ = (
+        Index('idx_weekly_completion_user_challenge', 'user_id', 'challenge_id', unique=True),
+    )
 
 
 class Quest(Base):

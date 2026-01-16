@@ -2,7 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import auth, quests, daily_runs, stats, goals
+from app.routers import auth, quests, daily_runs, stats, goals, goal_routes, decay_routes, weekly_challenge_routes
+
 # Initialize FastAPI app
 app = FastAPI(
     title="Quest RPG API",
@@ -22,14 +23,14 @@ app.add_middleware(
 )
 
 # Include routers
-
-# In main.py
-
-app.include_router(goals.router, prefix=f"/api/{settings.API_VERSION}")
 app.include_router(auth.router, prefix=f"/api/{settings.API_VERSION}")
 app.include_router(quests.router, prefix=f"/api/{settings.API_VERSION}")
 app.include_router(daily_runs.router, prefix=f"/api/{settings.API_VERSION}")
 app.include_router(stats.router, prefix=f"/api/{settings.API_VERSION}")
+app.include_router(goals.router, prefix=f"/api/{settings.API_VERSION}")
+app.include_router(goal_routes.router, prefix="/api/v1")
+app.include_router(decay_routes.router, prefix="/api/v1")
+app.include_router(weekly_challenge_routes.router, prefix="/api/v1")
 
 
 @app.get("/")

@@ -188,20 +188,36 @@ class HeatmapResponse(BaseModel):
     heatmap: List[HeatmapPoint]
 
 
+# Goal & Milestone Schemas
 class MilestoneBase(BaseModel):
     title: str
     order: int
 
+class MilestoneCreate(BaseModel):
+    title: str
+
+class MilestoneUpdate(BaseModel):
+    title: str
+
 class MilestoneResponse(MilestoneBase):
     id: uuid.UUID
     is_completed: bool
+
+    class Config:
+        from_attributes = True
 
 class GoalCreate(BaseModel):
     title: str
     description: Optional[str] = None
     category: QuestCategory
     target_date: Optional[date] = None
-    milestones: List[str] # List of milestone titles to create
+    milestones: List[str]  # List of milestone titles to create
+
+class GoalUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[QuestCategory] = None
+    target_date: Optional[date] = None
 
 class GoalResponse(BaseModel):
     id: uuid.UUID

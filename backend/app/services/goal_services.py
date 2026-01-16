@@ -100,3 +100,120 @@ class GoalService:
                 detail="Goal not found"
             )
         return goal
+
+    async def update_goal(self, goal_id: str, user_id: str, goal_update: schemas.GoalUpdate) -> models.Goal:
+        """Update goal title, description, category, or target date"""
+        user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
+        goal_uuid = uuid.UUID(goal_id) if isinstance(goal_id, str) else goal_id
+        
+        goal = self.db.query(models.Goal).filter(
+            models.Goal.id == goal_uuid,
+            models.Goal.user_id == user_uuid
+        ).first()
+        
+        if not goal:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
+        
+        # Update fields if provided
+        if goal_update.title is not None:
+            goal.title = goal_update.title
+        if goal_update.description is not None:
+            goal.description = goal_update.description
+        if goal_update.category is not None:
+            goal.category = goal_update.category.value if hasattr(goal_update.category, 'value') else goal_update.category
+        if goal_update.target_date is not None:
+            goal.target_date = goal_update.target_date
+        
+        self.db.commit()
+        self.db.refresh(goal)
+        return goal
+
+    async def delete_goal(self, goal_id: str, user_id: str) -> dict:
+        """Delete a goal and all its milestones"""
+        user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
+        goal_uuid = uuid.UUID(goal_id) if isinstance(goal_id, str) else goal_id
+        
+        goal = self.db.query(models.Goal).filter(
+            models.Goal.id == goal_uuid,
+            models.Goal.user_id == user_uuid
+        ).first()
+        
+        if not goal:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
+        
+        # Delete all milestones first
+        self.db.query(models.Milestone).filter(models.Milestone.goal_id == goal_uuid).delete()
+        
+        # Delete the goal
+        self.db.delete(goal)
+        self.db.commit()
+        
+        return {"message": "Goal deleted successfully", "goal_id": str(goal_id)}
+
+    async def add_milestone(self, goal_id: str, user_id: str, milestone_title: str) -> models.Goal:
+        """Add a new milestone to an existing goal"""
+        user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
+        goal_uuid = uuid.UUID(goal_id) if isinstance(goal_id, str) else goal_id
+        
+        goal = self.db.query(models.Goal).filter(
+            models.Goal.id == goal_uuid,
+            models.Goal.user_id == user_uuid
+        ).first()
+        
+        if not goal:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
+        
+        # Get the current max order
+        max_order = self.db.query(models.Milestone).filter(
+            models.Milestone.goal_id == goal_uuid
+        ).count()
+        
+        # Create new milestone
+        new_milestone = models.Milestone(
+            goal_id=goal_uuid,
+            title=milestone_title,
+            order=max_order,
+            is_completed=False
+        )
+        
+        self.db.add(new_milestone)
+        self.db.commit()
+        self.db.refresh(goal)
+        return goal
+
+    async def update_milestone(self, milestone_id: str, user_id: str, new_title: str) -> models.Milestone:
+        """Update milestone title"""
+        user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
+        milestone_uuid = uuid.UUID(milestone_id) if isinstance(milestone_id, str) else milestone_id
+        
+        milestone = self.db.query(models.Milestone).join(models.Goal).filter(
+            models.Milestone.id == milestone_uuid,
+            models.Goal.user_id == user_uuid
+        ).first()
+
+        if not milestone:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Milestone not found")
+        
+        milestone.title = new_title
+        self.db.commit()
+        self.db.refresh(milestone)
+        return milestone
+
+    async def delete_milestone(self, milestone_id: str, user_id: str) -> dict:
+        """Delete a milestone"""
+        user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
+        milestone_uuid = uuid.UUID(milestone_id) if isinstance(milestone_id, str) else milestone_id
+        
+        milestone = self.db.query(models.Milestone).join(models.Goal).filter(
+            models.Milestone.id == milestone_uuid,
+            models.Goal.user_id == user_uuid
+        ).first()
+
+        if not milestone:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Milestone not found")
+        
+        goal_id = milestone.goal_id
+        self.db.delete(milestone)
+        self.db.commit()
+        
+        return {"message": "Milestone deleted successfully", "milestone_id": str(milestone_id), "goal_id": str(goal_id)}

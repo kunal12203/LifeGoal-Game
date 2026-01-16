@@ -7,6 +7,8 @@ from app.database import get_db
 from app import models, schemas
 from app.auth import get_current_user
 from app.game_logic import AntiCheat, StreakCalculator, GameLogic
+from app.services.xp_decay_service import XPDecayService
+from app.services.weekly_challenge_service import WeeklyChallengeService
 
 router = APIRouter(prefix="/daily-runs", tags=["daily-runs"])
 
@@ -136,7 +138,7 @@ def get_daily_run(
 
 
 @router.post("/{run_id}/complete-quest/{completion_id}")
-def toggle_quest_completion(
+async def toggle_quest_completion(
     run_id: str,
     completion_id: str,
     current_user: models.User = Depends(get_current_user),
@@ -190,6 +192,10 @@ def toggle_quest_completion(
     if quest.is_core and completion.completed:
         _update_streak(current_user.id, quest.id, run.date, db)
     
+    # Update last activity date
+    decay_service = XPDecayService(db)
+    await decay_service.update_user_activity(current_user.id)
+    
     db.commit()
     
     return {
@@ -200,12 +206,12 @@ def toggle_quest_completion(
 
 
 @router.post("/{run_id}/complete")
-def complete_daily_run(
+async def complete_daily_run(
     run_id: str,
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Complete (lock) daily run"""
+    """Complete (lock) daily run and check for weekly challenge unlock"""
     
     run = db.query(models.DailyRun).filter(
         models.DailyRun.id == run_id,
@@ -239,13 +245,31 @@ def complete_daily_run(
     # Update user total XP and level
     _update_user_xp_and_level(current_user, db)
     
+    # Update last activity date
+    decay_service = XPDecayService(db)
+    await decay_service.update_user_activity(current_user.id)
+    
+    # Check if weekly challenge should be unlocked
+    challenge_service = WeeklyChallengeService(db)
+    unlock_status = await challenge_service.check_and_unlock_challenge(current_user.id)
+    
     db.commit()
     
-    return {
+    response = {
         "message": "Daily run completed successfully",
         "locked": True,
         "completed_at": run.completed_at
     }
+    
+    # Add weekly challenge unlock notification if just unlocked
+    if unlock_status.get("just_unlocked"):
+        response["weekly_challenge_unlocked"] = True
+        response["challenge"] = {
+            "title": unlock_status["challenge"].title,
+            "xp_reward": unlock_status["challenge"].xp_reward
+        }
+    
+    return response
 
 
 @router.get("/history/all", response_model=List[schemas.DailyRunResponse])

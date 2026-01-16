@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { 
   Plus, LayoutDashboard, Target, Trophy, 
-  Settings, LogOut, ChevronRight, Loader2 
+  LogOut, Loader2 
 } from "lucide-react";
 import Link from "next/link";
 
@@ -12,6 +12,9 @@ import Link from "next/link";
 import { useDashboard } from "@/hooks/use-dashboard";
 import { QuestCard } from "@/components/dashboard/quest-card";
 import { QuestPath } from "@/components/dashboard/quest-path";
+import { StreakCard } from "@/components/dashboard/streak-card";
+import { DecayWarningBanner } from "@/components/dashboard/decay-warning-banner";
+import { WeeklyChallengeCard } from "@/components/dashboard/weekly-challenge-card";
 import { LevelUpOverlay } from "@/components/dashboard/level-up-overlay";
 import { CreateGoalModal } from "@/components/dashboard/create-goal-modal";
 import { authService } from "@/services/auth-service";
@@ -21,11 +24,22 @@ import { cn } from "@/lib/utils";
 export default function DashboardPage() {
   const { 
     profile, 
-    dailyRun, 
-    activeGoal, 
+    dailyRun,
+    streaks, 
+    activeGoals,
+    decayStatus,
+    weeklyChallenge,
     isLoading, 
     toggleQuest, 
-    completeRun 
+    completeRun,
+    completeWeeklyChallenge,
+    isCompletingChallenge,
+    toggleMilestone,
+    updateGoal,
+    deleteGoal,
+    addMilestone,
+    updateMilestone,
+    deleteMilestone
   } = useDashboard();
 
   // UI State
@@ -53,7 +67,7 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 flex">
-      {/* 1. SIDEBAR NAVIGATION */}
+      {/* SIDEBAR NAVIGATION */}
       <aside className="w-20 lg:w-64 border-r border-slate-900 bg-slate-950/50 backdrop-blur-xl flex flex-col p-4 z-20">
         <div className="mb-10 flex items-center gap-3 px-2">
           <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
@@ -87,10 +101,15 @@ export default function DashboardPage() {
         </Button>
       </aside>
 
-      {/* 2. MAIN CONTENT AREA */}
+      {/* MAIN CONTENT AREA */}
       <main className="flex-1 overflow-y-auto custom-scrollbar">
         <div className="max-w-7xl mx-auto p-6 lg:p-10 space-y-8">
           
+          {/* DECAY WARNING BANNER */}
+          {decayStatus && !decayStatus.is_currently_safe && (
+            <DecayWarningBanner decayStatus={decayStatus} />
+          )}
+
           {/* TOP BAR: XP & PROFILE */}
           <header className="flex flex-col lg:flex-row gap-6 items-center bg-slate-900/40 border border-slate-800 p-6 rounded-[2rem] backdrop-blur-md">
             <div className="flex items-center gap-4 w-full lg:w-auto">
@@ -107,7 +126,7 @@ export default function DashboardPage() {
             <div className="flex-1 w-full space-y-2">
               <div className="flex justify-between text-[10px] font-bold uppercase tracking-tighter text-slate-500">
                 <span>XP Progress</span>
-                <span>{profile?.level_progress_percentage}% to Level {profile?.current_level + 1}</span>
+                <span>{profile?.level_progress_percentage}% to Level {(profile?.current_level || 0) + 1}</span>
               </div>
               <div className="h-3 w-full bg-slate-800 rounded-full overflow-hidden border border-slate-700">
                 <motion.div 
@@ -120,7 +139,7 @@ export default function DashboardPage() {
             </div>
           </header>
 
-          {/* BENTO GRID: Quests and Epic Path */}
+          {/* BENTO GRID: Quests and Sidebar */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             
             {/* Left/Center Columns: Daily Quests */}
@@ -163,10 +182,25 @@ export default function DashboardPage() {
               </Button>
             </div>
 
-            {/* Right Column: Epic Quest Path */}
+            {/* Right Column: Streaks + Weekly Challenge + Goals */}
             <div className="space-y-6">
+              {/* Streak Tracker */}
+              {streaks && streaks.length > 0 && (
+                <StreakCard streaks={streaks} />
+              )}
+
+              {/* Weekly Boss Battle */}
+              {weeklyChallenge && (
+                <WeeklyChallengeCard
+                  challengeData={weeklyChallenge}
+                  onComplete={() => completeWeeklyChallenge(weeklyChallenge.challenge.id)}
+                  isCompleting={isCompletingChallenge}
+                />
+              )}
+
+              {/* Epic Paths Section */}
               <div className="flex justify-between items-center">
-                <h3 className="text-lg font-bold">Epic Path</h3>
+                <h3 className="text-lg font-bold">Epic Paths</h3>
                 <Button 
                   size="sm" 
                   variant="outline" 
@@ -177,11 +211,23 @@ export default function DashboardPage() {
                 </Button>
               </div>
 
-              {activeGoal ? (
-                <QuestPath 
-                  milestones={activeGoal.milestones} 
-                  currentGoalTitle={activeGoal.title} 
-                />
+              {activeGoals && activeGoals.length > 0 ? (
+                <div className="space-y-6">
+                  {activeGoals.map((goal: any) => (
+                    <QuestPath 
+                      key={goal.id}
+                      goalId={goal.id}
+                      milestones={goal.milestones} 
+                      currentGoalTitle={goal.title}
+                      onToggleMilestone={toggleMilestone}
+                      onUpdateGoal={(title) => updateGoal(goal.id, title)}
+                      onDeleteGoal={() => deleteGoal(goal.id)}
+                      onAddMilestone={(title) => addMilestone(goal.id, title)}
+                      onUpdateMilestone={updateMilestone}
+                      onDeleteMilestone={deleteMilestone}
+                    />
+                  ))}
+                </div>
               ) : (
                 <div className="p-10 border-2 border-dashed border-slate-800 rounded-[2.5rem] text-center space-y-4">
                   <div className="w-16 h-16 bg-slate-900 rounded-full flex items-center justify-center mx-auto text-slate-600">
