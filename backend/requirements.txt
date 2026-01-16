@@ -1,0 +1,21 @@
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+
+# Database
+psycopg2-binary
+sqlalchemy
+alembic
+
+# Auth
+passlib[bcrypt]
+python-jose[cryptography]
+python-multipart
+
+# Utils
+python-dotenv
+pydantic[email]
+
+# bcrypt==4.1.2
+# passlib==1.7.4
